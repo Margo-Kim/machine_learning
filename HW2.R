@@ -1,0 +1,197 @@
+## load prostate data
+prostate <- read.csv("/Users/margokim/Downloads/prostate.csv")
+
+## subset to training examples
+prostate_train <- subset(prostate, train==TRUE)
+
+## plot lcavol vs lpsa
+plot_psa_data <- function(dat=prostate_train) {
+  plot(dat$lpsa, dat$lcavol,
+       xlab="log Prostate Screening Antigen (psa)",
+       ylab="log Cancer Volume (lcavol)",
+       pch = 20)
+  
+}
+plot_psa_data()
+
+############################
+## regular linear regression
+############################
+
+## L2 loss function
+L2_loss <- function(y, yhat){
+  (y-yhat)^2 
+}
+
+## fit simple linear model using numerical optimization
+## ... - arguments passed to los
+fit_lin <- function(y, x, loss=L2_loss, beta_init = c(-0.51, 0.75), ...) {
+  
+  ## function to compute training error
+  err <- function(beta)
+    mean(loss(y,  beta[1] + beta[2]*x, ...))
+  
+  ## find value of beta that minimizes training error
+  beta <- optim(par = beta_init, fn = err)
+  
+  
+  return(beta)
+}
+
+## make predictions from linear model
+predict_lin <- function(x, beta)
+  beta[1] + beta[2]*x
+
+## fit linear model
+lin_beta <- fit_lin(y=prostate_train$lcavol,
+                    x=prostate_train$lpsa,
+                    loss=L2_loss)
+
+## compute predictions for a grid of inputs
+x_grid <- seq(min(prostate_train$lpsa),
+              max(prostate_train$lpsa),
+              length.out=100)
+lin_pred <- predict_lin(x=x_grid, beta=lin_beta$par)
+
+## plot data
+plot_psa_data()
+
+## plot predictions
+lines(x=x_grid, y=lin_pred, col='darkgreen', lwd=2)
+
+## do the same thing with 'lm'
+lin_fit_lm <- lm(lcavol ~ lpsa, data=prostate_train)
+
+## make predictins using 'lm' object
+lin_pred_lm <- predict(lin_fit_lm, data.frame(lpsa=x_grid))
+
+## plot predictions from 'lm'
+lines(x=x_grid, y=lin_pred_lm, col='pink', lty=2, lwd=2)
+
+
+##################################
+## try modifying the loss function
+##################################
+## L1 loss function
+L1_loss <- function(y, yhat){
+  return(abs(y - yhat))
+}
+
+## Tilted absolute loss functions
+tilted_abs_loss_2 <- function(y, yhat, tau){
+  if (y > yhat){
+    return(tau * abs(y - yhat))
+  } else {
+    return((tau - 1) * abs(y - yhat))
+  }
+}
+
+## tilted absolute loss
+tilted_abs_loss <- function(y, yhat, tau) {
+  
+  d <- y-yhat
+  
+  ifelse(d > 0, d * tau, d * (tau - 1))
+}
+
+custom_loss <- tilted_abs_loss
+
+## plot custom loss function
+err_grd <- seq(-1,1,length.out=200)
+plot(err_grd, custom_loss(0, err_grd, tau=0.50), type='l',
+     xlab='y-yhat', ylab='custom loss')
+
+## fit linear model with custom loss
+lin_beta_custom <- fit_lin(y=prostate_train$lcavol,
+                           x=prostate_train$lpsa,
+                           loss=custom_loss,
+                           tau=0.25)
+
+lin_pred_custom <- predict_lin(x=x_grid, beta=lin_beta_custom$par)
+
+# Fit linear model with L1 loss
+lin_beta_l1 <- fit_lin(y=prostate_train$lcavol, x=prostate_train$lpsa, loss=L1_loss)
+lin_pred_l1 <- predict_lin(x=x_grid, beta=lin_beta_l1$par)
+
+# Fit linear models with tilted absolute loss for tau = 0.75
+lin_beta_tilted_25 <- fit_lin(y=prostate_train$lcavol, x=prostate_train$lpsa, loss=tilted_abs_loss, tau=0.25)
+lin_pred_tilted_25 <- predict_lin(x=x_grid, beta=lin_beta_tilted_25$par)
+
+lin_beta_tilted_75 <- fit_lin(y=prostate_train$lcavol, x=prostate_train$lpsa, loss=tilted_abs_loss, tau=0.75)
+lin_pred_tilted_75 <- predict_lin(x=x_grid, beta=lin_beta_tilted_75$par)
+
+## plot data
+plot_psa_data()
+
+## plot predictions from L2 loss
+lines(x=x_grid, y=lin_pred, col='darkgreen', lwd=2)
+
+## plot predictions from L1 loss
+lines(x=x_grid, y=lin_pred_l1, col='red', lwd=2)
+
+## plot predictions from tilted loss for tau = 0.25
+lines(x=x_grid, y=lin_pred_tilted_25, col='pink', lwd=2, lty=2)
+
+## plot predictions from tilted loss for tau = 0.75
+lines(x=x_grid, y=lin_pred_tilted_75, col='orange', lwd=2, lty=3)
+
+legend("topright", 
+       legend=c("L2 Loss", "L1 Loss", "Tilted Loss (tau=0.25)", "Tilted Loss (tau=0.75)"),
+       col=c("darkgreen", "red", "pink", "orange"), 
+       lty=c(1, 1, 2, 3), 
+       lwd=2)
+
+####################################################
+###Non-linear model#################################
+####################################################
+
+fit_non_lin <- function(y, x, loss=L2_loss, beta_init = c(-1.0, 0.0, -0.3), ...) {
+  
+  ## function to compute training error
+  err <- function(beta)
+    mean(loss(y,  beta[1] + beta[2]*exp(-beta[3]*x), ...))
+  
+  ## find value of beta that minimizes training error
+  beta <- optim(par = beta_init, fn = err)
+  
+  
+  return(beta)
+}
+
+## make predictions from linear model
+predict_non_lin <- function(x, beta) {
+  beta[1] + beta[2]*exp(-beta[3]*x)
+}
+
+# Fit nonlinear model with L2 loss
+non_lin_beta_L2 <- fit_non_lin(y=prostate_train$lcavol, x=prostate_train$lpsa, loss=L2_loss)
+
+# Fit nonlinear model with L1 loss
+non_lin_beta_L1 <- fit_non_lin(y=prostate_train$lcavol, x=prostate_train$lpsa, loss=L1_loss)
+
+# Fit nonlinear models with tilted absolute loss for tau = 0.25 and 0.75
+non_lin_beta_tilted_25 <- fit_non_lin(y=prostate_train$lcavol, x=prostate_train$lpsa, loss=tilted_abs_loss, tau=0.25)
+non_lin_beta_tilted_75 <- fit_non_lin(y=prostate_train$lcavol, x=prostate_train$lpsa, loss=tilted_abs_loss, tau=0.75)
+
+
+# Create a grid of x values for plotting predictions
+x_grid <- seq(min(prostate_train$lpsa), max(prostate_train$lpsa), length.out=100)
+
+# Plot the data
+plot(prostate_train$lpsa, prostate_train$lcavol, 
+     xlab="lpsa", ylab="lcavol", pch = 20, col = 'black')
+
+# Add nonlinear predictions for each loss function
+lines(x_grid, predict_non_lin(x_grid, non_lin_beta_L2$par), col='blue', lwd=2)
+lines(x_grid, predict_non_lin(x_grid, non_lin_beta_L1$par), col='red', lwd=2)
+lines(x_grid, predict_non_lin(x_grid, non_lin_beta_tilted_25$par), col='green', lwd=2, lty=2)
+lines(x_grid, predict_non_lin(x_grid, non_lin_beta_tilted_75$par), col='orange', lwd=2, lty=3)
+
+# Add a legend
+legend("topright", 
+       legend=c("Nonlinear L2 Loss", "Nonlinear L1 Loss", "Nonlinear Tilted Loss (tau=0.25)", "Nonlinear Tilted Loss (tau=0.75)"),
+       col=c("blue", "red", "green", "orange"), 
+       lty=c(1, 1, 2, 3), 
+       lwd=2)
+
+
